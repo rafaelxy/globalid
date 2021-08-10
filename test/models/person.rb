@@ -4,6 +4,7 @@ class Person
   HARDCODED_ID_FOR_MISSING_PERSON = '1000'
 
   attr_reader :id
+  attr_reader :other_id
 
   def self.find(id_or_ids)
     if id_or_ids.is_a? Array
@@ -24,8 +25,9 @@ class Person
     (conditions[:id] - [HARDCODED_ID_FOR_MISSING_PERSON]).collect { |id| new(id) }
   end
 
-  def initialize(id = 1)
+  def initialize(id = 1, other_id = nil)
     @id = id
+    @other_id = other_id
   end
 
   def ==(other)

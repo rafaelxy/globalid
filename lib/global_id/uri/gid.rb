@@ -3,6 +3,8 @@ require 'active_support/core_ext/module/aliasing'
 require 'active_support/core_ext/object/blank'
 require 'active_support/core_ext/hash/indifferent_access'
 
+require 'pry'
+
 module URI
   class GID < Generic
     # URI::GID encodes an app unique reference to a specific model as an URI.
@@ -64,8 +66,10 @@ module URI
       # Shorthand to build a URI::GID from an app, a model and optional params.
       #
       #   URI::GID.create('bcx', Person.find(5), database: 'superhumans')
-      def create(app, model, params = nil)
-        build app: app, model_name: model.class.name, model_id: model.id, params: params
+      def create(app, model, params = {})
+        model_id_name = params.fetch(:model_id, 'id')
+        value = model.send(model_id_name)
+        build app: app, model_name: model.class.name, model_id: value, model_id_name: model_id_name, params: params.except(:model_id)
       end
 
       # Create a new URI::GID from components with argument check.
@@ -83,7 +87,12 @@ module URI
       def build(args)
         parts = Util.make_components_hash(self, args)
         parts[:host] = parts[:app]
-        parts[:path] = "/#{parts[:model_name]}/#{CGI.escape(parts[:model_id].to_s)}"
+
+        parts[:path] = if parts[:model_id_name].nil? || parts[:model_id_name] == 'id'
+          "/#{parts[:model_name]}/#{CGI.escape(parts[:model_id].to_s)}"
+        else
+          "/#{parts[:model_name]}/#{parts[:model_id_name]}/#{CGI.escape(parts[:model_id].to_s)}"
+        end
 
         if parts[:params] && !parts[:params].empty?
           parts[:query] = URI.encode_www_form(parts[:params])
@@ -124,7 +133,7 @@ module URI
       COMPONENT = [ :scheme, :app, :model_name, :model_id, :params ].freeze
 
       # Extracts model_name and model_id from the URI path.
-      PATH_REGEXP = %r(\A/([^/]+)/?([^/]+)?\z)
+      PATH_REGEXP = %r(\A\/([^\/]+)\/?([^\/]+)?\/?([^\/]+)?\z)
 
       def check_host(host)
         validate_component(host)
@@ -145,13 +154,22 @@ module URI
       end
 
       def set_model_components(path, validate = false)
-        _, model_name, model_id = path.match(PATH_REGEXP).to_a
+        _, model_name, model_id_or_id_name, model_id_or_nil = path.match(PATH_REGEXP).to_a
+        if model_id_or_nil.nil?
+          model_id = model_id_or_id_name
+          model_id_name = nil
+        else
+          model_id = model_id_or_nil
+          model_id_name = model_id_or_id_name
+        end
+
         model_id = CGI.unescape(model_id) if model_id
 
         validate_component(model_name) && validate_model_id(model_id, model_name) if validate
 
         @model_name = model_name
         @model_id = model_id
+        @model_id_name = model_id_name
       end
 
       def validate_component(component)
